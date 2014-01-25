@@ -51,6 +51,7 @@ SDL_Thread *video_thread;
 #endif
 
 static std::string capturedir;
+static int videofps = 30;
 extern const char* RunningProgram;
 Bitu CaptureState;
 
@@ -212,7 +213,7 @@ static void CAPTURE_VideoHeader() {
 
 		AVIOUT4("avih");
 		AVIOUTd(56);                         /* # of bytes to follow */
-		AVIOUTd((Bit32u)(1000000 / capture.video.fps));       /* Microseconds per frame */
+		AVIOUTd((Bit32u)(1000000 / videofps));       /* Microseconds per frame */
 		AVIOUTd(0);
 		AVIOUTd(0);                         /* PaddingGranularity (whatever that might be) */
 		AVIOUTd(0x110);                     /* Flags,0x10 has index, 0x100 interleaved */
@@ -240,7 +241,7 @@ static void CAPTURE_VideoHeader() {
 		AVIOUTd(0);                         /* Reserved, MS says: wPriority, wLanguage */
 		AVIOUTd(0);                         /* InitialFrames */
 		AVIOUTd(1000000);                   /* Scale */
-		AVIOUTd((Bit32u)(1000000 * capture.video.fps));              /* Rate: Rate/Scale == samples/second */
+		AVIOUTd((Bit32u)(1000000 * videofps));              /* Rate: Rate/Scale == samples/second */
 		AVIOUTd(0);                         /* Start */
 		AVIOUTd(capture.video.frames);      /* Length */
 		AVIOUTd(0);                  /* SuggestedBufferSize */
@@ -354,65 +355,67 @@ static void CAPTURE_VideoEvent(bool pressed) {
 }
 
 int CAPTURE_VideoCompressFrame(video_capture_t *videohandle, video_chunk_t chunk) {
-	int vfps = 30;
-	
 	Bit8u doubleRow[SCALER_MAXWIDTH*4];
 	Bitu countWidth = videohandle->width;
 	int codecFlags;
 
-	if (videohandle->frames % 300 == 0)
-		codecFlags = 1;
-	else codecFlags = 0;
-	if (!videohandle->codec->PrepareCompressFrame( codecFlags, videohandle->format, (char *)chunk.pal, videohandle->buf, videohandle->bufSize))
-	{
-		CAPTURE_VideoEvent(true);
-		return 1;
-	}
+  if(videohandle->frames == 0 || videohandle->frames / videofps <= 1) {
+    if (videohandle->frames % 300 == 0)
+      codecFlags = 1;
+    else codecFlags = 0;
+  
+    if (!videohandle->codec->PrepareCompressFrame( codecFlags, videohandle->format, (char *)chunk.pal, videohandle->buf, videohandle->bufSize))
+    {
+      CAPTURE_VideoEvent(true);
+      return 1;
+    }
 
-	for (Bit32u i=0;i<videohandle->height;i++) {
-		void * rowPointer;
-		if (videohandle->flags & CAPTURE_FLAG_DBLW) {
-			void *srcLine;
-			Bitu x;
-			Bitu countWidth = videohandle->width >> 1;
-			if (videohandle->flags & CAPTURE_FLAG_DBLH)
-				srcLine=(chunk.videobuf+(i >> 1)*videohandle->pitch);
-			else
-				srcLine=(chunk.videobuf+(i >> 0)*videohandle->pitch);
-			switch ( videohandle->bpp) {
-			case 8:
-				for (x=0;x<countWidth;x++)
-					((Bit8u *)doubleRow)[x*2+0] =
-					((Bit8u *)doubleRow)[x*2+1] = ((Bit8u *)srcLine)[x];
-				break;
-			case 15:
-			case 16:
-				for (x=0;x<countWidth;x++)
-					((Bit16u *)doubleRow)[x*2+0] =
-					((Bit16u *)doubleRow)[x*2+1] = ((Bit16u *)srcLine)[x];
-				break;
-			case 32:
-				for (x=0;x<countWidth;x++)
-					((Bit32u *)doubleRow)[x*2+0] =
-					((Bit32u *)doubleRow)[x*2+1] = ((Bit32u *)srcLine)[x];
-				break;
-			}
-						rowPointer=doubleRow;
-		} else {
-			if (videohandle->flags & CAPTURE_FLAG_DBLH)
-				rowPointer=(chunk.videobuf+(i >> 1)*videohandle->pitch);
-			else
-				rowPointer=(chunk.videobuf+(i >> 0)*videohandle->pitch);
-		}
-		videohandle->codec->CompressLines( 1, &rowPointer );
-	}
-	int written = videohandle->codec->FinishCompressFrame();
-	if (written < 0) {
-		CAPTURE_VideoEvent(true);
-		return 1;
-	}
-	CAPTURE_AddAviChunk( "00dc", written, videohandle->buf, codecFlags & 1 ? 0x10 : 0x0);
-	videohandle->frames++;
+    for (Bit32u i=0;i<videohandle->height;i++) {
+      void * rowPointer;
+      if (videohandle->flags & CAPTURE_FLAG_DBLW) {
+        void *srcLine;
+        Bitu x;
+        Bitu countWidth = videohandle->width >> 1;
+        if (videohandle->flags & CAPTURE_FLAG_DBLH)
+          srcLine=(chunk.videobuf+(i >> 1)*videohandle->pitch);
+        else
+          srcLine=(chunk.videobuf+(i >> 0)*videohandle->pitch);
+        switch ( videohandle->bpp) {
+        case 8:
+          for (x=0;x<countWidth;x++)
+            ((Bit8u *)doubleRow)[x*2+0] =
+            ((Bit8u *)doubleRow)[x*2+1] = ((Bit8u *)srcLine)[x];
+          break;
+        case 15:
+        case 16:
+          for (x=0;x<countWidth;x++)
+            ((Bit16u *)doubleRow)[x*2+0] =
+            ((Bit16u *)doubleRow)[x*2+1] = ((Bit16u *)srcLine)[x];
+          break;
+        case 32:
+          for (x=0;x<countWidth;x++)
+            ((Bit32u *)doubleRow)[x*2+0] =
+            ((Bit32u *)doubleRow)[x*2+1] = ((Bit32u *)srcLine)[x];
+          break;
+        }
+              rowPointer=doubleRow;
+      } else {
+        if (videohandle->flags & CAPTURE_FLAG_DBLH)
+          rowPointer=(chunk.videobuf+(i >> 1)*videohandle->pitch);
+        else
+          rowPointer=(chunk.videobuf+(i >> 0)*videohandle->pitch);
+      }
+      videohandle->codec->CompressLines( 1, &rowPointer );
+    }
+    int written = videohandle->codec->FinishCompressFrame();
+    if (written < 0) {
+      CAPTURE_VideoEvent(true);
+      return 1;
+    }
+    
+    CAPTURE_AddAviChunk( "00dc", written, videohandle->buf, codecFlags & 1 ? 0x10 : 0x0);
+    videohandle->frames++;
+  }
 
 	if ( chunk.audioused ) {
 		CAPTURE_AddAviChunk( "01wb", chunk.audioused * 4, chunk.audiobuf, 0);
@@ -438,7 +441,6 @@ int CAPTURE_VideoThread(void *videohandleptr) {
 	while(CaptureState & CAPTURE_VIDEO) {
 		/* Process queue while it is not empty */
 		while (!videohandle->q.empty()) {
-			int start = SDL_GetTicks();
 			/* Process a block and write it to disk */
 			if (!rc) {
 				rc = CAPTURE_VideoCompressFrame(videohandle,videohandle->q.front());
