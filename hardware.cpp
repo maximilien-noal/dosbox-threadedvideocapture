@@ -733,7 +733,9 @@ skip_shot:
     capture.video.q.push(chunk);
 
     /*Wake up thread*/
-    SDL_CondSignal(non_empty_queue);
+    if(!capture.video.q.empty()) {
+      SDL_CondSignal(non_empty_queue);
+    }
 
     /* If queue exceeds size limit, wait for capture thread to empty queue */
     if (capture.video.q.size() > MAX_QUEUE_SIZE) {

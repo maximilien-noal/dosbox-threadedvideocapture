@@ -1,5 +1,5 @@
 --- hardware.cpp.svn	2014-01-26 10:44:10.683788963 +0100
-+++ hardware.cpp	2014-01-26 20:54:01.813192988 +0100
++++ hardware.cpp	2014-01-26 22:09:29.085300994 +0100
 @@ -1,5 +1,5 @@
  /*
 - *  Copyright (C) 2002-2013  The DOSBox Team
@@ -313,7 +313,7 @@
  #define AVIOUT4(_S_) memcpy(&avi_header[header_pos],_S_,4);header_pos+=4;
  #define AVIOUTw(_S_) host_writew(&avi_header[header_pos], _S_);header_pos+=2;
  #define AVIOUTd(_S_) host_writed(&avi_header[header_pos], _S_);header_pos+=4;
-@@ -283,496 +320,651 @@
+@@ -283,496 +320,653 @@
  		AVIOUT4("movi");
  		/* First add the index table to the end */
  		memcpy(capture.video.index, "idx1", 4);
@@ -1006,7 +1006,9 @@
 +    capture.video.q.push(chunk);
 +
 +    /*Wake up thread*/
-+    SDL_CondSignal(non_empty_queue);
++    if(!capture.video.q.empty()) {
++      SDL_CondSignal(non_empty_queue);
++    }
 +
 +    /* If queue exceeds size limit, wait for capture thread to empty queue */
 +    if (capture.video.q.size() > MAX_QUEUE_SIZE) {
