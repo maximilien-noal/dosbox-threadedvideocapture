@@ -422,15 +422,15 @@ int CAPTURE_VideoCompressFrame(video_capture_t *videohandle, video_chunk_t chunk
 
   CAPTURE_AddAviChunk("00dc", written, videohandle->buf, codecFlags & 1 ? 0x10 : 0x0);
   videohandle->frames++;
-
-  return 0;
-}
-
-int CAPTURE_VideoAddAudio(video_capture_t *videohandle, video_chunk_t chunk) {
+  
   if (chunk.audioused) {
     CAPTURE_AddAviChunk("01wb", chunk.audioused * 4, chunk.audiobuf, 0);
     videohandle->audiowritten = chunk.audioused * 4;
   }
+  
+  /* Adds AVI header to the file */
+  CAPTURE_VideoHeader();
+
   return 0;
 }
 
@@ -450,13 +450,7 @@ int CAPTURE_VideoThread(void *videohandleptr) {
     while (!videohandle->q.empty()) {
       /* Process a block and write it to disk */
       if (!rc) {
-        video_chunk_t chunk = videohandle->q.front();
-        if (!rc) {
-          rc = CAPTURE_VideoCompressFrame(videohandle, chunk);
-        }
-        CAPTURE_VideoAddAudio(videohandle, chunk);
-        /* Adds AVI header to the file */
-        CAPTURE_VideoHeader();
+		rc = CAPTURE_VideoCompressFrame(videohandle, videohandle->q.front());
       } else {
         CaptureState &= ~CAPTURE_VIDEO;
       }
